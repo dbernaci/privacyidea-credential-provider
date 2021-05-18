@@ -1,0 +1,2 @@
+﻿  Shared.cpp
+C:\cygwin64\home\bernacci\privacyidea-credential-provider\Shared\Shared.cpp(21,10): fatal error C1083: Non è possibile aprire il file inclusione: 'Logger.h': No such file or directory

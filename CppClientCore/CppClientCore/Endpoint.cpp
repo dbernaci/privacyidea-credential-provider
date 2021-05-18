@@ -21,7 +21,7 @@
 #include "Endpoint.h"
 #include "Logger.h"
 #include "Challenge.h"
-#include "../nlohmann/json.hpp"
+#include "../../packages/nlohmann.json.3.9.1/build/native/include/nlohmann/json.hpp"
 
 #include <winhttp.h>
 #include <atlutil.h>
@@ -144,6 +144,22 @@ string Endpoint::connect(const string& endpoint, SecureString sdata, const Reque
 	// Check the windows version to decide which access type flag to set
 	DWORD dwAccessType = WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY;
 	OSVERSIONINFOEX info;
+	DWORDLONG dwlConditionMask = 0;
+	int op = VER_GREATER_EQUAL;
+
+	ZeroMemory(&info, sizeof(OSVERSIONINFOEX));
+	info.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+	info.dwMajorVersion = 6;
+	info.dwMinorVersion = 2;
+	VER_SET_CONDITION(dwlConditionMask, VER_MAJORVERSION, op);
+	VER_SET_CONDITION(dwlConditionMask, VER_MINORVERSION, op);
+
+	if (!VerifyVersionInfo(&info, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask)) {
+		dwAccessType = WINHTTP_ACCESS_TYPE_DEFAULT_PROXY;
+		DebugPrint("Setting access type to WINHTTP_ACCESS_TYPE_DEFAULT_PROXY");
+	}
+
+	/* 
 	ZeroMemory(&info, sizeof(OSVERSIONINFOEX));
 	info.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
 	GetVersionEx((LPOSVERSIONINFO)&info);
@@ -153,6 +169,10 @@ string Endpoint::connect(const string& endpoint, SecureString sdata, const Reque
 		dwAccessType = WINHTTP_ACCESS_TYPE_DEFAULT_PROXY;
 		DebugPrint("Setting access type to WINHTTP_ACCESS_TYPE_DEFAULT_PROXY");
 	}
+	*/
+
+
+
 
 	// Use WinHttpOpen to obtain a session handle.
 	hSession = WinHttpOpen(L"privacyidea-cp",

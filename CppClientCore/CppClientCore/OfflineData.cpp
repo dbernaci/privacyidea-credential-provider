@@ -18,7 +18,8 @@
 ** * * * * * * * * * * * * * * * * * * */
 
 #include "OfflineData.h"
-#include "../nlohmann/json.hpp"
+//#include "../../packages/nlohmann.json.3.9.1/build/native/include/nlohmann/json.hpp"
+#include "./nlohmann/json.hpp"
 #include "Logger.h"
 #include <iostream>
 

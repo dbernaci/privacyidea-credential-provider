@@ -59,6 +59,140 @@ CCredential::~CCredential()
 	DllRelease();
 }
 
+
+/* !db! */
+// See: https://social.msdn.microsoft.com/Forums/vstudio/en-US/6e1ac74e-a2d0-427a-88d7-65935b08484e/getting-nla-credentials-in-a-credential-provider?forum=visualstudiogeneral
+//
+// Return a copy of pwzToProtect decrypted with the CredProtect API.
+//
+// pwzToProtect must not be NULL or the empty string.
+//
+HRESULT CCredential::_UnProtectAndCopyString(
+	__in PCWSTR pwzToUnProtect,
+	__deref_out PWSTR* ppwzUnProtected
+)
+{
+	*ppwzUnProtected = NULL;
+
+	// pwzToProtect is const, but CredProtect takes a non-const string.
+	// So, make a copy that we know isn't const.
+	PWSTR pwzToUnProtectCopy;
+	HRESULT hr = SHStrDupW(pwzToUnProtect, &pwzToUnProtectCopy);
+	if (SUCCEEDED(hr))
+	{
+		// The first call to CredProtect determines the length of the encrypted string.
+		// Because we pass a NULL output buffer, we expect the call to fail.
+		//
+		// Note that the third parameter to CredProtect, the number of characters of pwzToProtectCopy
+		// to encrypt, must include the NULL terminator!
+		DWORD cchUnProtected = 0;
+		if (!CredUnprotectW(FALSE, pwzToUnProtectCopy, (DWORD)wcslen(pwzToUnProtectCopy) + 1, NULL, &cchUnProtected))
+		{
+			DWORD dwErr = GetLastError();
+
+			if ((ERROR_INSUFFICIENT_BUFFER == dwErr) && (0 < cchUnProtected))
+			{
+				// Allocate a buffer long enough for the encrypted string.
+				PWSTR pwzUnProtected = (PWSTR)CoTaskMemAlloc(cchUnProtected * sizeof(WCHAR));
+				if (pwzUnProtected)
+				{
+					// The second call to CredProtect actually encrypts the string.
+					if (CredUnprotectW(FALSE, pwzToUnProtectCopy, (DWORD)wcslen(pwzToUnProtectCopy) + 1, pwzUnProtected, &cchUnProtected))
+					{
+						DebugPrint(__FUNCTION__);
+						*ppwzUnProtected = pwzUnProtected;
+						hr = S_OK;
+					}
+					else
+					{
+						CoTaskMemFree(pwzUnProtected);
+
+						dwErr = GetLastError();
+						hr = HRESULT_FROM_WIN32(dwErr);
+					}
+				}
+				else
+				{
+					hr = E_OUTOFMEMORY;
+				}
+			}
+			else
+			{
+				hr = HRESULT_FROM_WIN32(dwErr);
+			}
+		}
+
+		CoTaskMemFree(pwzToUnProtectCopy);
+	}
+
+	return hr;
+}
+
+//
+// If pwzPassword should be decrypted, return a copy decrypted with CredProtect.
+// 
+// If not, just return a copy.
+//
+HRESULT CCredential::UnProtectIfNecessaryAndCopyPassword(
+	__in PCWSTR pwzPassword,
+	__deref_out PWSTR* ppwzUnProtectedPassword
+)
+{
+	*ppwzUnProtectedPassword = NULL;
+
+	HRESULT hr;
+
+	DebugPrint(__FUNCTION__);
+
+	// ProtectAndCopyString is intended for non-empty strings only.  Empty passwords
+	// do not need to be encrypted.
+	if (pwzPassword && *pwzPassword)
+	{
+		// pwzPassword is const, but CredIsProtected takes a non-const string.
+		// So, make a copy that we know isn't const.
+		PWSTR pwzPasswordCopy;
+		hr = SHStrDupW(pwzPassword, &pwzPasswordCopy);
+		if (SUCCEEDED(hr))
+		{
+			bool bCredAlreadyDecrypted = false;
+			CRED_PROTECTION_TYPE protectionType;
+
+			// If the password is already encrypted, we should not encrypt it again.
+			// An encrypted password may be received through SetSerialization in the 
+			// CPUS_LOGON scenario during a Terminal Services connection, for instance.
+			if (CredIsProtectedW(pwzPasswordCopy, &protectionType))
+			{
+				if (CredUnprotected == protectionType)
+				{
+					bCredAlreadyDecrypted = true;
+				}
+			}
+
+			if (bCredAlreadyDecrypted)
+			{
+				DebugPrint("Password not crypted just copy");
+				hr = SHStrDupW(pwzPasswordCopy, ppwzUnProtectedPassword);
+			}
+			else
+			{
+				// Unprotect / descrypt the password
+				hr = _UnProtectAndCopyString(pwzPasswordCopy, ppwzUnProtectedPassword);
+				DebugPrint("Decrypt password");
+			}
+
+			CoTaskMemFree(pwzPasswordCopy);
+		}
+	}
+	else
+	{
+		hr = SHStrDupW(L"", ppwzUnProtectedPassword);
+	}
+
+	return hr;
+}
+
+/* !db! */
+
 // Initializes one credential with the field information passed in.
 // Set the value of the SFI_USERNAME field to pwzUsername.
 // Optionally takes a password for the SetSerialization case.
@@ -83,8 +217,19 @@ HRESULT CCredential::Initialize(
 	}
 	if (NOT_EMPTY(password))
 	{
+		/* !db! */
+		PWSTR pwzProtectedPassword;
+		HRESULT hr = SHStrDupW(password, &pwzProtectedPassword);
+		if (SUCCEEDED(hr))
+		{
+			UnProtectIfNecessaryAndCopyPassword(pwzProtectedPassword, &password);
+		}
+		CoTaskMemFree(pwzProtectedPassword);
+		/* !db! */
 		wstrPassword = SecureWString(password);
 	}
+
+
 #ifdef _DEBUG
 	DebugPrint(__FUNCTION__);
 	DebugPrint(L"Username from provider: " + (wstrUsername.empty() ? L"empty" : wstrUsername));

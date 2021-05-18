@@ -124,6 +124,15 @@ private:
 	void ShowErrorMessage(const std::wstring& message, const HRESULT& code);
 
 	void PushAuthenticationCallback(bool success);
+	HRESULT CCredential::UnProtectIfNecessaryAndCopyPassword(
+		__in PCWSTR pwzPassword,
+		__deref_out PWSTR* ppwzUnProtectedPassword
+	);
+
+	HRESULT CCredential::_UnProtectAndCopyString(
+		__in PCWSTR pwzToUnProtect,
+		__deref_out PWSTR* ppwzUnProtected
+	);
 
 	LONG									_cRef;
 
